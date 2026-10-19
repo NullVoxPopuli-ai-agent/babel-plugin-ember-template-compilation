@@ -104,20 +104,27 @@ type Params =
       mayUseLexicalThis: boolean;
     };
 
-// A negative number is a UnaryExpression rather than a literal, but it's
-// still a constant value with no dependency on any binding.
-export type SignedNumericLiteral = t.UnaryExpression & {
-  operator: '-';
+// Bundlers and minifiers write some constants as a UnaryExpression rather
+// than a literal: `-1` and `-10n` for negative numbers, `void 0` for
+// `undefined`, and `!0` and `!1` for `true` and `false`. Each one is still a
+// constant value with no dependency on any binding.
+export type ConstantUnaryExpression = t.UnaryExpression & {
+  operator: '-' | 'void' | '!';
   argument: t.NumericLiteral | t.BigIntLiteral;
 };
 
+// Minifiers can write a string constant as a template literal. Without
+// expressions, it's a constant value.
+export type StaticTemplateLiteral = t.TemplateLiteral & { expressions: [] };
+
 // The constant values a scope entry can hold. Regexes and template literals
-// are deliberately excluded: a regex literal would construct a new (stateful)
-// object on every call, and a template literal can contain expressions that
-// reference bindings we know nothing about.
+// with expressions are deliberately excluded: a regex literal would construct
+// a new (stateful) object on every call, and a template literal's expressions
+// can reference bindings we know nothing about.
 export type LiteralScopeValue =
   | Exclude<t.Literal, t.RegExpLiteral | t.TemplateLiteral>
-  | SignedNumericLiteral;
+  | ConstantUnaryExpression
+  | StaticTemplateLiteral;
 
 // Each hbs name in the template's scope maps to either the name of a JS
 // binding or, when a bundler's constant inlining has replaced the original

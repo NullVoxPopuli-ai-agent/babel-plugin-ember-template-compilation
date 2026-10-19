@@ -1,7 +1,11 @@
 import type { NodePath } from '@babel/traverse';
 import type * as Babel from '@babel/core';
 import type { types as t } from '@babel/core';
-import { ScopeLocals, type LiteralScopeValue, type SignedNumericLiteral } from './scope-locals.js';
+import {
+  ScopeLocals,
+  type ConstantUnaryExpression,
+  type LiteralScopeValue,
+} from './scope-locals.js';
 
 export class ExpressionParser {
   constructor(private babel: typeof Babel) {}
@@ -262,19 +266,25 @@ function name(node: t.StringLiteral | t.Identifier): string {
   }
 }
 
-function isSignedNumericLiteral(t: typeof Babel.types, node: t.Node): node is SignedNumericLiteral {
+function isConstantUnaryExpression(
+  t: typeof Babel.types,
+  node: t.Node
+): node is ConstantUnaryExpression {
   return (
     t.isUnaryExpression(node) &&
-    node.operator === '-' &&
+    (node.operator === '-' || node.operator === 'void' || node.operator === '!') &&
     (t.isNumericLiteral(node.argument) || t.isBigIntLiteral(node.argument))
   );
 }
 
-// the value shapes a bundler's constant inlining can substitute for a
-// reference to an imported constant
+// the value shapes a bundler's constant inlining (and a later minification)
+// can substitute for a reference to an imported constant
 function isLiteralScopeValue(t: typeof Babel.types, node: t.Node): node is LiteralScopeValue {
-  if (isSignedNumericLiteral(t, node)) {
+  if (isConstantUnaryExpression(t, node)) {
     return true;
   }
-  return t.isLiteral(node) && !t.isRegExpLiteral(node) && !t.isTemplateLiteral(node);
+  if (t.isTemplateLiteral(node)) {
+    return node.expressions.length === 0;
+  }
+  return t.isLiteral(node) && !t.isRegExpLiteral(node);
 }
