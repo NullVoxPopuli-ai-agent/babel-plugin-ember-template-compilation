@@ -101,17 +101,12 @@ export class ExpressionParser {
 
         let propName = name(key);
 
-        switch (value.type) {
-          case 'ArrayPattern':
-          case 'AssignmentPattern':
-          case 'ObjectPattern':
-          case 'RestElement':
-            throw path.buildCodeFrameError(
-              `Scope objects for \`${invokedName}\` may only contain expressions. Found ${value.type}`
-            );
-          default:
-            res.add(propName, value);
+        if (!this.t.isExpression(value)) {
+          throw path.buildCodeFrameError(
+            `Scope objects for \`${invokedName}\` may only contain expressions. Found ${value.type}`
+          );
         }
+        res.add(propName, value);
         return res;
       },
       new ScopeLocals(this.babel, { mode: 'explicit' })
