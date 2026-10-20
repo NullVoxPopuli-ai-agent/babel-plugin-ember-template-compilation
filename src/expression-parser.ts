@@ -1,11 +1,7 @@
 import type { NodePath } from '@babel/traverse';
 import type * as Babel from '@babel/core';
 import type { types as t } from '@babel/core';
-import {
-  ScopeLocals,
-  type ConstantUnaryExpression,
-  type LiteralScopeValue,
-} from './scope-locals.js';
+import { ScopeLocals } from './scope-locals.js';
 
 export class ExpressionParser {
   constructor(private babel: typeof Babel) {}
@@ -112,19 +108,15 @@ export class ExpressionParser {
           case 'ThisExpression':
             res.add(propName, 'this');
             break;
+          case 'ArrayPattern':
+          case 'AssignmentPattern':
+          case 'ObjectPattern':
+          case 'RestElement':
+            throw path.buildCodeFrameError(
+              `Scope objects for \`${invokedName}\` may only contain expressions. Found ${value.type}`
+            );
           default:
-            if (isLiteralScopeValue(this.t, value)) {
-              // A bundler's constant inlining can legally rewrite a reference
-              // to an imported constant into its literal value, turning
-              // `{ EMPTY }` into `{ EMPTY: "" }` before this plugin sees it.
-              // The literal still tells us everything we need: the
-              // template-visible name and the value it resolves to.
-              res.add(propName, value);
-            } else {
-              throw path.buildCodeFrameError(
-                `Scope objects for \`${invokedName}\` may only contain direct references to in-scope values, e.g. { ${propName} } or { ${propName}: ${propName} }, or literal values. Found ${value.type}`
-              );
-            }
+            res.add(propName, value);
         }
         return res;
       },
@@ -264,27 +256,4 @@ function name(node: t.StringLiteral | t.Identifier): string {
   } else {
     return node.name;
   }
-}
-
-function isConstantUnaryExpression(
-  t: typeof Babel.types,
-  node: t.Node
-): node is ConstantUnaryExpression {
-  return (
-    t.isUnaryExpression(node) &&
-    (node.operator === '-' || node.operator === 'void' || node.operator === '!') &&
-    (t.isNumericLiteral(node.argument) || t.isBigIntLiteral(node.argument))
-  );
-}
-
-// the value shapes a bundler's constant inlining (and a later minification)
-// can substitute for a reference to an imported constant
-function isLiteralScopeValue(t: typeof Babel.types, node: t.Node): node is LiteralScopeValue {
-  if (isConstantUnaryExpression(t, node)) {
-    return true;
-  }
-  if (t.isTemplateLiteral(node)) {
-    return node.expressions.length === 0;
-  }
-  return t.isLiteral(node) && !t.isRegExpLiteral(node);
 }

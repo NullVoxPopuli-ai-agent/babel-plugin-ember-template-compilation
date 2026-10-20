@@ -446,10 +446,12 @@ function remapAndBindIdentifiers(target: NodePath, babel: typeof Babel, scopeLoc
       if (scopeLocals.has(path.node.name) && path.node.name !== scopeLocals.get(path.node.name)) {
         let jsValue = scopeLocals.get(path.node.name);
         if (typeof jsValue !== 'string') {
-          // this identifier's scope entry is a literal value (a bundler's
-          // constant inlining may produce those), so the template compiler
-          // output should contain the literal itself
-          path.replaceWith(babel.types.cloneNode(jsValue, true));
+          let [expression] = path.replaceWith(babel.types.cloneNode(jsValue, true));
+          /**
+           * The names inside the expression are JS names, not hbs names.
+           * Remapping them again loops forever: `{ a: f(a) }`.
+           */
+          expression.skip();
           return;
         }
         // this identifier has different names in hbs vs js, so we need to

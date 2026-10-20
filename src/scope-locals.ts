@@ -104,34 +104,12 @@ type Params =
       mayUseLexicalThis: boolean;
     };
 
-// Bundlers and minifiers write some constants as a UnaryExpression rather
-// than a literal: `-1` and `-10n` for negative numbers, `void 0` for
-// `undefined`, and `!0` and `!1` for `true` and `false`. Each one is still a
-// constant value with no dependency on any binding.
-export type ConstantUnaryExpression = t.UnaryExpression & {
-  operator: '-' | 'void' | '!';
-  argument: t.NumericLiteral | t.BigIntLiteral;
-};
-
-// Minifiers can write a string constant as a template literal. Without
-// expressions, it's a constant value.
-export type StaticTemplateLiteral = t.TemplateLiteral & { expressions: [] };
-
-// The constant values a scope entry can hold. Regexes and template literals
-// with expressions are deliberately excluded: a regex literal would construct
-// a new (stateful) object on every call, and a template literal's expressions
-// can reference bindings we know nothing about.
-export type LiteralScopeValue =
-  | Exclude<t.Literal, t.RegExpLiteral | t.TemplateLiteral>
-  | ConstantUnaryExpression
-  | StaticTemplateLiteral;
-
 /**
  * The value that an hbs name in the template's scope resolves to.
  *
  * A string is the name of a JS binding.
  * Every way to add a scope entry gives a string,
- * except for a literal in the explicit form.
+ * except for any other expression in the explicit form.
  *
  * - The explicit form, with a reference:
  *     `{ foo: bar }`  foo → "bar"
@@ -148,11 +126,12 @@ export type LiteralScopeValue =
  *   Each one adds the name of the binding that it returns:
  *     foo → "foo"
  *
- * A node is a constant that a bundler inlined in place of a binding.
+ * A node is any other expression.
  * Only the explicit form gives a node:
- *     `{ FOO: 1 }`  FOO → NumericLiteral
+ *     `{ FOO: 1 }`        FOO → NumericLiteral
+ *     `{ foo: a.b() }`    foo → CallExpression
  */
-export type ScopeValue = string | LiteralScopeValue;
+export type ScopeValue = string | t.Expression;
 
 export class ScopeLocals {
   constructor(params: Params) {
@@ -196,7 +175,7 @@ export class ScopeLocals {
   #isInJsScope(hbsName: string, jsPath: NodePath) {
     let jsValue = this.#mapping[hbsName] ?? hbsName;
     if (typeof jsValue !== 'string') {
-      // a constant value doesn't need any binding
+      /** an expression brings its own references */
       return true;
     }
     return ALLOWED_GLOBALS.has(jsValue) || jsPath.scope.getBinding(jsValue);

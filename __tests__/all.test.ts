@@ -1904,33 +1904,68 @@ describe('htmlbars-inline-precompile', function () {
       );
     });
 
-    it('errors if scope contains any non-reference, non-literal values', async function () {
-      await expect(() =>
-        transform(
-          "import { precompileTemplate } from '@ember/template-compilation';\nvar compiled = precompileTemplate('hello', { scope: () => ({ foo, bar: foo() }) });"
-        )
-      ).rejects.toThrow(
-        /Scope objects for `precompileTemplate` may only contain direct references to in-scope values, e.g. { bar } or { bar: bar }, or literal values. Found CallExpression/
-      );
+    it('accepts any expression as a scope value', async function () {
+      let transformed = await transform(`
+        import { precompileTemplate } from '@ember/template-compilation';
+        import { foo, name } from 'somewhere';
+        var compiled = precompileTemplate("{{call}}{{greeting}}{{pattern}}{{negated}}{{member}}", {
+          strictMode: true,
+          scope: () => ({ call: foo(), greeting: \`hi \${name}\`, pattern: /hi/, negated: -foo, member: foo.bar }),
+        });
+      `);
+
+      expect(wireScope(transformed)).toEqual({
+        call: 'foo()',
+        greeting: '`hi ${name}`',
+        pattern: '/hi/',
+        negated: '-foo',
+        member: 'foo.bar',
+      });
     });
 
-    it('errors if scope contains a template literal with expressions', async function () {
-      // a template literal can interpolate expressions that reference bindings
-      // we know nothing about, so it isn't a value we can inline
-      await expect(() =>
-        transform(
-          'import { precompileTemplate } from "@ember/template-compilation";\nvar compiled = precompileTemplate("hello", { scope: () => ({ bar: `hi ${name}` }) });'
-        )
-      ).rejects.toThrow(/or literal values. Found TemplateLiteral/);
+    it('does not remap the names inside a scope expression', async function () {
+      /**
+       * `a` inside `f(a)` is the JS binding `a`,
+       * not the template name `a`.
+       */
+      let transformed = await transform(`
+        import { precompileTemplate } from '@ember/template-compilation';
+        import { a, f } from 'somewhere';
+        var compiled = precompileTemplate("{{a}}", {
+          strictMode: true,
+          scope: () => ({ a: f(a) }),
+        });
+      `);
+
+      expect(wireScope(transformed)).toEqual({ a: 'f(a)' });
     });
 
-    it('errors if scope contains a regex literal', async function () {
-      // a regex literal would construct a new stateful object on every call
-      await expect(() =>
-        transform(
-          'import { precompileTemplate } from "@ember/template-compilation";\nvar compiled = precompileTemplate("hello", { scope: () => ({ bar: /hi/ }) });'
-        )
-      ).rejects.toThrow(/or literal values. Found RegExpLiteral/);
+    it('keeps an import that only a scope expression uses, with @babel/plugin-transform-typescript', async function () {
+      plugins = [[HTMLBarsInlinePrecompile, { targetFormat: 'wire' }], TransformTypescript];
+
+      let transformed = await transform(`
+        import { template } from '@ember/template-compiler';
+        import helpers from 'helpers';
+        export default template("{{shout}}", {
+          scope: () => ({ shout: helpers.shout }),
+        });
+      `);
+
+      expect(transformed).toContain(`import helpers from 'helpers';`);
+      expect(wireScope(transformed)).toEqual({ shout: 'helpers.shout' });
+    });
+
+    it('drops a scope expression that the template does not use', async function () {
+      let transformed = await transform(`
+        import { precompileTemplate } from '@ember/template-compilation';
+        import { track } from 'somewhere';
+        var compiled = precompileTemplate("hello", {
+          strictMode: true,
+          scope: () => ({ unused: track() }),
+        });
+      `);
+
+      expect(transformed).not.toContain('track()');
     });
 
     it('accepts literal scope values, as produced by a bundler inlining constants', async function () {
@@ -2005,16 +2040,6 @@ describe('htmlbars-inline-precompile', function () {
         BIG: '10n',
         NEG_BIG: '-10n',
       });
-    });
-
-    it('errors if scope contains a unary expression of a reference', async function () {
-      for (let value of ['-foo', '!foo', 'void foo']) {
-        await expect(() =>
-          transform(
-            `import { precompileTemplate } from "@ember/template-compilation";\nlet foo;\nvar compiled = precompileTemplate("{{bar}}", { scope: () => ({ bar: ${value} }) });`
-          )
-        ).rejects.toThrow(/or literal values. Found UnaryExpression/);
-      }
     });
 
     it('keeps each value with its name when references and literals mix', async function () {
