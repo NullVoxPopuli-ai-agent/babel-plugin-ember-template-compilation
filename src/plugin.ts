@@ -446,7 +446,7 @@ function remapAndBindIdentifiers(target: NodePath, babel: typeof Babel, scopeLoc
 
       let jsValue = scopeLocals.get(path.node.name);
       if (jsValue && !babel.types.isIdentifier(jsValue, { name: path.node.name })) {
-        path.replaceWith(babel.types.cloneNode(jsValue, true));
+        let [replacement] = path.replaceWith(babel.types.cloneNode(jsValue, true));
         /**
          * The names inside the new expression are JS names, not hbs names,
          * so they must not be remapped again. Without the skip:
@@ -454,17 +454,21 @@ function remapAndBindIdentifiers(target: NodePath, babel: typeof Babel, scopeLoc
          *   `{ a: f(a) }`     loops forever
          *   `{ a: b, b: c }`  a resolves to c
          */
-        path.skip();
-        if (!path.isIdentifier()) {
-          return;
-        }
+        replacement.skip();
+        // this is where we tell babel's scope system about the new references
+        // we just introduced. @babel/plugin-transform-typescript in particular
+        // cares a lot about those references being present.
+        bindReference(replacement);
+        replacement.traverse({ ReferencedIdentifier: bindReference });
       }
-      // this is where we tell babel's scope system about the new reference we
-      // just introduced. @babel/plugin-transform-typescript in particular
-      // cares a lot about those references being present.
-      path.scope.getBinding(path.node.name)?.reference(path);
     },
   });
+}
+
+function bindReference(path: NodePath) {
+  if (path.isIdentifier() && path.isReferencedIdentifier()) {
+    path.scope.getBinding(path.node.name)?.reference(path);
+  }
 }
 
 function insertCompiledTemplate<EnvSpecificOptions>(
