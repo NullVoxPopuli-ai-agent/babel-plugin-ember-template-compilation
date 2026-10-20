@@ -671,6 +671,10 @@ function buildScope(babel: typeof Babel, locals: ScopeLocals) {
     t.objectExpression(
       locals
         .entries()
+        /**
+         * A string is the name of a JS binding, and a node is an inlined constant.
+         * `ScopeValue` lists where each one comes from.
+         */
         .map(([name, value]) =>
           typeof value === 'string'
             ? t.objectProperty(t.identifier(name), t.identifier(value), false, name !== 'this')

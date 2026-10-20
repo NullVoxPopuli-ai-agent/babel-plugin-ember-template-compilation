@@ -126,9 +126,32 @@ export type LiteralScopeValue =
   | ConstantUnaryExpression
   | StaticTemplateLiteral;
 
-// Each hbs name in the template's scope maps to either the name of a JS
-// binding or, when a bundler's constant inlining has replaced the original
-// binding with its statically-known value, that value.
+/**
+ * The value that an hbs name in the template's scope resolves to.
+ *
+ * A string is the name of a JS binding.
+ * Every way to add a scope entry gives a string,
+ * except for a literal in the explicit form.
+ *
+ * - The explicit form, with a reference:
+ *     `{ foo: bar }`  foo → "bar"
+ *     `{ foo }`       foo → "foo"
+ *
+ * - The explicit form, with `this`:
+ *     `{ foo: this }`  foo → "this"
+ *
+ * - The implicit form (`eval`).
+ *   The crawl adds each upvar that has a JS binding of the same name:
+ *     `{{foo}}`  foo → "foo"
+ *
+ * - An AST transform that calls `bindExpression` or `bindImport` in jsutils.
+ *   Each one adds the name of the binding that it returns:
+ *     foo → "foo"
+ *
+ * A node is a constant that a bundler inlined in place of a binding.
+ * Only the explicit form gives a node:
+ *     `{ FOO: 1 }`  FOO → NumericLiteral
+ */
 export type ScopeValue = string | LiteralScopeValue;
 
 export class ScopeLocals {
