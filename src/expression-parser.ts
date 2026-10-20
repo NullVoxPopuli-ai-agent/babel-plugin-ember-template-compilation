@@ -102,12 +102,6 @@ export class ExpressionParser {
         let propName = name(key);
 
         switch (value.type) {
-          case 'Identifier':
-            res.add(propName, value.name);
-            break;
-          case 'ThisExpression':
-            res.add(propName, 'this');
-            break;
           case 'ArrayPattern':
           case 'AssignmentPattern':
           case 'ObjectPattern':
@@ -120,7 +114,7 @@ export class ExpressionParser {
         }
         return res;
       },
-      new ScopeLocals({ mode: 'explicit' })
+      new ScopeLocals(this.babel, { mode: 'explicit' })
     );
   }
 
